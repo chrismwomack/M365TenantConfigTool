@@ -463,23 +463,41 @@ function Invoke-GraphRequest {
         return $response
     }
     catch {
-        $statusCode = $null
-        if ($_.Exception.Response) {
-            $statusCode = [int]$_.Exception.Response.StatusCode
-        }
-
         $errorMessage = $_.Exception.Message
-        if ($_.ErrorDetails.Message) {
+
+        # Invoke-MgGraphRequest stores the response body in the exception
+        $responseBody = $null
+        if ($_.Exception.Response) {
             try {
-                $errorDetail = $_.ErrorDetails.Message | ConvertFrom-Json
-                if ($errorDetail.error.message) {
-                    $errorMessage = $errorDetail.error.message
+                $stream = $_.Exception.Response.GetResponseStream()
+                if ($stream) {
+                    $reader = [System.IO.StreamReader]::new($stream)
+                    $responseBody = $reader.ReadToEnd()
+                    $reader.Close()
                 }
             }
             catch { }
         }
 
-        Write-Failure "API Error ($statusCode): $errorMessage"
+        # Also check ErrorDetails (works in some SDK versions)
+        if (-not $responseBody -and $_.ErrorDetails.Message) {
+            $responseBody = $_.ErrorDetails.Message
+        }
+
+        if ($responseBody) {
+            try {
+                $errorDetail = $responseBody | ConvertFrom-Json
+                if ($errorDetail.error) {
+                    $errorMessage = "$($errorDetail.error.code): $($errorDetail.error.message)"
+                }
+            }
+            catch { }
+        }
+
+        Write-Failure "API Error: $errorMessage"
+        if ($responseBody -and $responseBody -ne $errorMessage) {
+            Write-Host "  Response: $responseBody" -ForegroundColor DarkRed
+        }
         return $null
     }
 }
@@ -645,7 +663,7 @@ function New-TenantSnapshot {
     $body = @{
         displayName = $DisplayName
         description = $Description
-        resources   = $Resources
+        resources   = [array]$Resources
     }
 
     Write-Info "Creating snapshot with $($Resources.Count) resource type(s)..."
