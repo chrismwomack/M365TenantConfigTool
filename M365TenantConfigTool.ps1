@@ -449,14 +449,13 @@ function Invoke-GraphRequest {
     )
 
     $params = @{
-        Method      = $Method
-        Uri         = $Uri
-        ContentType = "application/json"
+        Method = $Method
+        Uri    = $Uri
     }
 
     if ($Body) {
-        $jsonBody = $Body | ConvertTo-Json -Depth 10
-        $params["Body"] = $jsonBody
+        $params["Body"]        = $Body
+        $params["ContentType"] = "application/json"
     }
 
     try {
